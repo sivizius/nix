@@ -76,7 +76,7 @@ jobs:
     - run: nix-instantiate -E 'builtins.currentTime' --eval
 
   docker_push_image:
-    needs: [ check_cachix tests ]
+    needs: [check_cachix tests]
     if: >-
       github.event_name == 'push' &&
       github.ref_name == 'master' &&
@@ -111,7 +111,7 @@ jobs:
     - run: docker push nixos/nix:$NIX_VERSION-$NIX_PLATFORM
 
   docker_push_manifest:
-    needs: [ check_cachix tests docker_push_image ]
+    needs: [check_cachix tests docker_push_image]
     if: >-
       github.event_name == 'push' &&
       github.ref_name == 'master' &&
