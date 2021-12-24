@@ -75,7 +75,7 @@ jobs:
         install_options: "--tarball-url-prefix https://${{ env.CACHIX_NAME }}.cachix.org/serve"
     - run: nix-instantiate -E 'builtins.currentTime' --eval
 
- docker_push_image:
+  docker_push_image:
     needs: [ check_cachix tests ]
     if: >-
       github.event_name == 'push' &&
