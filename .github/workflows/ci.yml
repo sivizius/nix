@@ -79,7 +79,7 @@ jobs:
     needs: [check_cachix, tests]
     if: >-
       github.event_name == 'push' &&
-      github.ref_name == 'master' &&
+      github.ref_name == 'push-docker-image-to-docker-hub' &&
       needs.check_cachix.outputs.secret == 'true'
     strategy:
       matrix:
@@ -114,7 +114,7 @@ jobs:
     needs: [check_cachix, tests, docker_push_image]
     if: >-
       github.event_name == 'push' &&
-      github.ref_name == 'master' &&
+      github.ref_name == 'push-docker-image-to-docker-hub' &&
       needs.check_cachix.outputs.secret == 'true'
     runs-on: ubuntu-latest
     steps:
