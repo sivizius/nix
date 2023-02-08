@@ -100,26 +100,21 @@ static FlakeInput parseFlakeInput(EvalState & state,
 
     FlakeInput input;
 
-    auto sInputs = state.symbols.create("inputs");
-    auto sUrl = state.symbols.create("url");
-    auto sFlake = state.symbols.create("flake");
-    auto sFollows = state.symbols.create("follows");
-
     fetchers::Attrs attrs;
     std::optional<std::string> url;
 
     for (nix::Attr attr : *(value->attrs)) {
         try {
-            if (attr.name == sUrl) {
+            if (attr.name == state.symbols.url) {
                 expectType(state, nString, *attr.value, attr.pos);
                 url = attr.value->string.s;
                 attrs.emplace("url", *url);
-            } else if (attr.name == sFlake) {
+            } else if (attr.name == state.symbols.flake) {
                 expectType(state, nBool, *attr.value, attr.pos);
                 input.isFlake = attr.value->boolean;
-            } else if (attr.name == sInputs) {
+            } else if (attr.name == state.symbols.inputs) {
                 input.overrides = parseFlakeInputs(state, attr.value, attr.pos, baseDir, lockRootPath);
-            } else if (attr.name == sFollows) {
+            } else if (attr.name == state.symbols.follows) {
                 expectType(state, nString, *attr.value, attr.pos);
                 auto follows(parseInputPath(attr.value->string.s));
                 follows.insert(follows.begin(), lockRootPath.begin(), lockRootPath.end());
@@ -222,24 +217,20 @@ static Flake getFlake(
 
     expectType(state, nAttrs, vInfo, state.positions.add({flakeFile}, 1, 1));
 
-    if (auto description = vInfo.attrs->get(state.sDescription)) {
+    if (auto description = vInfo.attrs->get(state.symbols.description)) {
         expectType(state, nString, *description->value, description->pos);
         flake.description = description->value->string.s;
     }
 
-    auto sInputs = state.symbols.create("inputs");
-
-    if (auto inputs = vInfo.attrs->get(sInputs))
+    if (auto inputs = vInfo.attrs->get(state.symbols.inputs))
         flake.inputs = parseFlakeInputs(state, inputs->value, inputs->pos, flakeDir, lockRootPath);
 
-    auto sOutputs = state.symbols.create("outputs");
-
-    if (auto outputs = vInfo.attrs->get(sOutputs)) {
+    if (auto outputs = vInfo.attrs->get(state.symbols.outputs)) {
         expectType(state, nFunction, *outputs->value, outputs->pos);
 
         if (outputs->value->isLambda() && outputs->value->lambda.fun->hasFormals()) {
             for (auto & formal : outputs->value->lambda.fun->formals->formals) {
-                if (formal.name != state.sSelf)
+                if (formal.name != state.symbols.self)
                     flake.inputs.emplace(state.symbols[formal.name], FlakeInput {
                         .ref = parseFlakeRef(state.symbols[formal.name])
                     });
@@ -249,9 +240,7 @@ static Flake getFlake(
     } else
         throw Error("flake '%s' lacks attribute 'outputs'", lockedRef);
 
-    auto sNixConfig = state.symbols.create("nixConfig");
-
-    if (auto nixConfig = vInfo.attrs->get(sNixConfig)) {
+    if (auto nixConfig = vInfo.attrs->get(state.symbols.nixConfig)) {
         expectType(state, nAttrs, *nixConfig->value, nixConfig->pos);
 
         for (auto & setting : *nixConfig->value->attrs) {
@@ -291,10 +280,10 @@ static Flake getFlake(
     }
 
     for (auto & attr : *vInfo.attrs) {
-        if (attr.name != state.sDescription &&
-            attr.name != sInputs &&
-            attr.name != sOutputs &&
-            attr.name != sNixConfig)
+        if (attr.name != state.symbols.description &&
+            attr.name != state.symbols.inputs      &&
+            attr.name != state.symbols.outputs     &&
+            attr.name != state.symbols.nixConfig)
             throw Error("flake '%s' has an unsupported attribute '%s', at %s",
                 lockedRef, state.symbols[attr.name], state.positions[attr.pos]);
     }

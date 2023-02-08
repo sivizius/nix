@@ -128,21 +128,19 @@ static void enumerateOutputs(EvalState & state, Value & vFlake,
     auto pos = vFlake.determinePos(noPos);
     state.forceAttrs(vFlake, pos, "while evaluating a flake to get its outputs");
 
-    auto aOutputs = vFlake.attrs->get(state.symbols.create("outputs"));
+    auto aOutputs = vFlake.attrs->get(state.symbols.outputs);
     assert(aOutputs);
 
     state.forceAttrs(*aOutputs->value, pos, "while evaluating the outputs of a flake");
 
-    auto sHydraJobs = state.symbols.create("hydraJobs");
-
     /* Hack: ensure that hydraJobs is evaluated before anything
        else. This way we can disable IFD for hydraJobs and then enable
        it for other outputs. */
-    if (auto attr = aOutputs->value->attrs->get(sHydraJobs))
+    if (auto attr = aOutputs->value->attrs->get(state.symbols.hydraJobs))
         callback(state.symbols[attr->name], *attr->value, attr->pos);
 
     for (auto & attr : *aOutputs->value->attrs) {
-        if (attr.name != sHydraJobs)
+        if (attr.name != state.symbols.hydraJobs)
             callback(state.symbols[attr.name], *attr.value, attr.pos);
     }
 }
@@ -435,8 +433,8 @@ struct CmdFlakeCheck : FlakeCommand
 
                 state->forceAttrs(v, pos, "");
 
-                if (auto attr = v.attrs->get(state->symbols.create("path"))) {
-                    if (attr->name == state->symbols.create("path")) {
+                if (auto attr = v.attrs->get(state->symbols.path)) {
+                    if (attr->name == state->symbols.path) {
                         PathSet context;
                         auto path = state->coerceToPath(attr->pos, *attr->value, context, "");
                         if (!store->isInStore(path))
@@ -446,7 +444,7 @@ struct CmdFlakeCheck : FlakeCommand
                 } else
                     throw Error("template '%s' lacks attribute 'path'", attrPath);
 
-                if (auto attr = v.attrs->get(state->symbols.create("description")))
+                if (auto attr = v.attrs->get(state->symbols.description))
                     state->forceStringNoCtx(*attr->value, attr->pos, "");
                 else
                     throw Error("template '%s' lacks attribute 'description'", attrPath);
@@ -1103,11 +1101,11 @@ struct CmdFlakeShow : FlakeCommand, MixJSON
 
                 auto showDerivation = [&]()
                 {
-                    auto name = visitor.getAttr(state->sName)->getString();
+                    auto name = visitor.getAttr(state->symbols.name)->getString();
                     if (json) {
                         std::optional<std::string> description;
-                        if (auto aMeta = visitor.maybeGetAttr(state->sMeta)) {
-                            if (auto aDescription = aMeta->maybeGetAttr(state->sDescription))
+                        if (auto aMeta = visitor.maybeGetAttr(state->symbols.meta)) {
+                            if (auto aDescription = aMeta->maybeGetAttr(state->symbols.description))
                                 description = aDescription->getString();
                         }
                         j.emplace("type", "derivation");

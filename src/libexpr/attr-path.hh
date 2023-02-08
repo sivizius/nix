@@ -1,6 +1,7 @@
 #pragma once
 
 #include "eval.hh"
+#include "symbol-table.hh"
 
 #include <string>
 #include <map>

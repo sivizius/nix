@@ -141,7 +141,7 @@ static void getAllExprs(EvalState & state,
             vArg->mkString(path2);
             if (seen.size() == maxAttrs)
                 throw Error("too many Nix expressions in directory '%1%'", path);
-            attrs.alloc(attrName).mkApp(&state.getBuiltin("import"), vArg);
+            attrs.alloc(attrName).mkApp(&state.getBuiltin(state.symbols.import), vArg);
         }
         else if (S_ISDIR(st.st_mode))
             /* `path2' is a directory (with no default.nix in it);

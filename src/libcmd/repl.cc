@@ -712,14 +712,16 @@ bool NixRepl::processLine(std::string line)
         if (auto doc = state->getDoc(v)) {
             std::string markdown;
 
-            if (!doc->args.empty() && doc->name) {
+            if (!doc->args.empty() && !doc->name.empty()) {
                 auto args = doc->args;
                 for (auto & arg : args)
                     arg = "*" + arg + "*";
 
-                markdown +=
-                    "**Synopsis:** `builtins." + (std::string) (*doc->name) + "` "
-                    + concatStringsSep(" ", args) + "\n\n";
+                markdown += "**Synopsis:** `builtins.";
+                markdown += doc->name;
+                markdown += "` ";
+                markdown += concatStringsSep(" ", args);
+                markdown += "\n\n";
             }
 
             markdown += stripIndentation(doc->doc);
@@ -941,7 +943,7 @@ std::ostream & NixRepl::printValue(std::ostream & str, Value & v, unsigned int m
 
         if (isDrv) {
             str << "«derivation ";
-            Bindings::iterator i = v.attrs->find(state->sDrvPath);
+            Bindings::iterator i = v.attrs->find(state->symbols.drvPath);
             PathSet context;
             if (i != v.attrs->end())
                 str << state->store->printStorePath(state->coerceToStorePath(i->pos, *i->value, context, "while evaluating the drvPath of a derivation"));

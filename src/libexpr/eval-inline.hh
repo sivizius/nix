@@ -120,8 +120,7 @@ inline void EvalState::forceAttrs(Value & v, Callable getPos, std::string_view e
 {
     forceValue(v, noPos);
     if (v.type() != nAttrs) {
-        PosIdx pos = getPos();
-        error("value is %1% while a set was expected", showType(v)).withTrace(pos, errorCtx).debugThrow<TypeError>();
+        unexpectedType(v, nAttrs, getPos(), errorCtx);
     }
 }
 
@@ -131,7 +130,7 @@ inline void EvalState::forceList(Value & v, const PosIdx pos, std::string_view e
 {
     forceValue(v, noPos);
     if (!v.isList()) {
-        error("value is %1% while a list was expected", showType(v)).withTrace(pos, errorCtx).debugThrow<TypeError>();
+        unexpectedType(v, nList, pos, errorCtx);
     }
 }
 

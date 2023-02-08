@@ -71,10 +71,13 @@ namespace nix {
             } catch (BaseError & e) {                                       \
                 ASSERT_EQ(PrintToString(e.info().msg),                      \
                           PrintToString(message));                          \
-                ASSERT_EQ(e.info().traces.size(), 1) << "while testing " args << std::endl << e.what(); \
+                ASSERT_EQ(e.info().traces.size(), 2) << "while testing " args << std::endl << e.what(); \
                 auto trace = e.info().traces.rbegin();                      \
                 ASSERT_EQ(PrintToString(trace->hint),                       \
                           PrintToString(hintfmt("while calling the '%s' builtin", name))); \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("from call site")));        \
                 throw;                                                      \
             }                                                               \
             , type                                                          \
@@ -90,13 +93,75 @@ namespace nix {
             } catch (BaseError & e) {                                       \
                 ASSERT_EQ(PrintToString(e.info().msg),                      \
                           PrintToString(message));                          \
-                ASSERT_EQ(e.info().traces.size(), 2) << "while testing " args << std::endl << e.what(); \
+                ASSERT_EQ(e.info().traces.size(), 3) << "while testing " args << std::endl << e.what(); \
                 auto trace = e.info().traces.rbegin();                      \
                 ASSERT_EQ(PrintToString(trace->hint),                       \
                           PrintToString(context));                          \
                 ++trace;                                                    \
                 ASSERT_EQ(PrintToString(trace->hint),                       \
                           PrintToString(hintfmt("while calling the '%s' builtin", name))); \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("from call site")));        \
+                throw;                                                      \
+            }                                                               \
+            , type                                                          \
+        )
+
+#define ASSERT_TRACE3(args, type, message, context1, context2)              \
+        ASSERT_THROW(                                                       \
+            std::string expr(args);                                         \
+            std::string name = expr.substr(0, expr.find(" "));              \
+            try {                                                           \
+                Value v = eval("builtins." args);                           \
+                state.forceValueDeep(v);                                    \
+            } catch (BaseError & e) {                                       \
+                ASSERT_EQ(PrintToString(e.info().msg),                      \
+                          PrintToString(message));                          \
+                ASSERT_EQ(e.info().traces.size(), 4) << "while testing " args << std::endl << e.what(); \
+                auto trace = e.info().traces.rbegin();                      \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(context1));                         \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(context2));                         \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("while calling the '%s' builtin", name))); \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("from call site")));        \
+                throw;                                                      \
+            }                                                               \
+            , type                                                          \
+        )
+
+#define ASSERT_TRACE4(args, type, message, context1, context2, context3)    \
+        ASSERT_THROW(                                                       \
+            std::string expr(args);                                         \
+            std::string name = expr.substr(0, expr.find(" "));              \
+            try {                                                           \
+                Value v = eval("builtins." args);                           \
+                state.forceValueDeep(v);                                    \
+            } catch (BaseError & e) {                                       \
+                ASSERT_EQ(PrintToString(e.info().msg),                      \
+                          PrintToString(message));                          \
+                ASSERT_EQ(e.info().traces.size(), 5) << "while testing " args << std::endl << e.what(); \
+                auto trace = e.info().traces.rbegin();                      \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(context1));                         \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(context2));                         \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(context3));                         \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("while calling the '%s' builtin", name))); \
+                ++trace;                                                    \
+                ASSERT_EQ(PrintToString(trace->hint),                       \
+                          PrintToString(hintfmt("from call site")));        \
                 throw;                                                      \
             }                                                               \
             , type                                                          \
@@ -105,7 +170,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, genericClosure) {
         ASSERT_TRACE2("genericClosure 1",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a set"),
                       hintfmt("while evaluating the first argument passed to builtins.genericClosure"));
 
         ASSERT_TRACE2("genericClosure {}",
@@ -115,22 +180,22 @@ namespace nix {
 
         ASSERT_TRACE2("genericClosure { startSet = 1; }",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the 'startSet' attribute passed as argument to builtins.genericClosure"));
 
         ASSERT_TRACE2("genericClosure { startSet = [{ key = 1;}]; operator = true; }",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a function"),
                       hintfmt("while evaluating the 'operator' attribute passed as argument to builtins.genericClosure"));
 
         ASSERT_TRACE2("genericClosure { startSet = [{ key = 1;}]; operator = item: true; }",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a list"),
                       hintfmt("while evaluating the return value of the `operator` passed to builtins.genericClosure"));
 
         ASSERT_TRACE2("genericClosure { startSet = [{ key = 1;}]; operator = item: [ true ]; }",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a set"),
                       hintfmt("while evaluating one of the elements generated by (or initially passed to) builtins.genericClosure"));
 
         ASSERT_TRACE2("genericClosure { startSet = [{ key = 1;}]; operator = item: [ {} ]; }",
@@ -145,7 +210,7 @@ namespace nix {
 
         ASSERT_TRACE2("genericClosure { startSet = [ true ]; operator = item: [{ key = ''a''; }]; }",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a set"),
                       hintfmt("while evaluating one of the elements generated by (or initially passed to) builtins.genericClosure"));
 
     }
@@ -154,12 +219,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, replaceStrings) {
         ASSERT_TRACE2("replaceStrings 0 0 {}",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.replaceStrings"));
 
         ASSERT_TRACE2("replaceStrings [] 0 {}",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.replaceStrings"));
 
         ASSERT_TRACE1("replaceStrings [ 0 ] [] {}",
@@ -168,17 +233,17 @@ namespace nix {
 
         ASSERT_TRACE2("replaceStrings [ 1 ] [ \"new\" ] {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating one of the strings to replace passed to builtins.replaceStrings"));
 
         ASSERT_TRACE2("replaceStrings [ \"old\" ] [ true ] {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a string"),
                       hintfmt("while evaluating one of the replacement strings passed to builtins.replaceStrings"));
 
         ASSERT_TRACE2("replaceStrings [ \"old\" ] [ \"new\" ] {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a string"),
                       hintfmt("while evaluating the third argument passed to builtins.replaceStrings"));
 
     }
@@ -243,7 +308,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, ceil) {
         ASSERT_TRACE2("ceil \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a float was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a float"),
                       hintfmt("while evaluating the first argument passed to builtins.ceil"));
 
     }
@@ -252,7 +317,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, floor) {
         ASSERT_TRACE2("floor \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a float was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a float"),
                       hintfmt("while evaluating the first argument passed to builtins.floor"));
 
     }
@@ -265,7 +330,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, getEnv) {
         ASSERT_TRACE2("getEnv [ ]",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.getEnv"));
 
     }
@@ -286,7 +351,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, placeholder) {
         ASSERT_TRACE2("placeholder []",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.placeholder"));
 
     }
@@ -387,7 +452,7 @@ namespace nix {
 
         ASSERT_TRACE2("filterSource [] ./.",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.filterSource"));
 
         // Usupported by store "dummy"
@@ -399,7 +464,7 @@ namespace nix {
 
         // ASSERT_TRACE2("filterSource (_: _: 1) ./.",
         //               TypeError,
-        //               hintfmt("value is %s while a Boolean was expected", "an integer"),
+        //               hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
         //               hintfmt("while evaluating the return value of the path filter function"));
 
     }
@@ -412,7 +477,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, attrNames) {
         ASSERT_TRACE2("attrNames []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the argument passed to builtins.attrNames"));
 
     }
@@ -421,7 +486,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, attrValues) {
         ASSERT_TRACE2("attrValues []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the argument passed to builtins.attrValues"));
 
     }
@@ -430,12 +495,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, getAttr) {
         ASSERT_TRACE2("getAttr [] []",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.getAttr"));
 
         ASSERT_TRACE2("getAttr \"foo\" []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the second argument passed to builtins.getAttr"));
 
         ASSERT_TRACE2("getAttr \"foo\" {}",
@@ -453,13 +518,14 @@ namespace nix {
     TEST_F(ErrorTraceTest, hasAttr) {
         ASSERT_TRACE2("hasAttr [] []",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
+                      hintfmt("while evaluating the second argument passed to builtins.hasAttr"));
+
+        ASSERT_TRACE2("hasAttr [] {}",
+                      TypeError,
+                      hintfmt("value is %s while %s was expected", "a list", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.hasAttr"));
 
-        ASSERT_TRACE2("hasAttr \"foo\" []",
-                      TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
-                      hintfmt("while evaluating the second argument passed to builtins.hasAttr"));
 
     }
 
@@ -471,17 +537,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, removeAttrs) {
         ASSERT_TRACE2("removeAttrs \"\" \"\"",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a set"),
                       hintfmt("while evaluating the first argument passed to builtins.removeAttrs"));
 
         ASSERT_TRACE2("removeAttrs \"\" [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a set"),
                       hintfmt("while evaluating the first argument passed to builtins.removeAttrs"));
 
         ASSERT_TRACE2("removeAttrs \"\" [ \"1\" ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a set"),
                       hintfmt("while evaluating the first argument passed to builtins.removeAttrs"));
 
     }
@@ -490,12 +556,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, listToAttrs) {
         ASSERT_TRACE2("listToAttrs 1",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the argument passed to builtins.listToAttrs"));
 
         ASSERT_TRACE2("listToAttrs [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a set"),
                       hintfmt("while evaluating an element of the list passed to builtins.listToAttrs"));
 
         ASSERT_TRACE2("listToAttrs [ {} ]",
@@ -505,7 +571,7 @@ namespace nix {
 
         ASSERT_TRACE2("listToAttrs [ { name = 1; } ]",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the `name` attribute of an element of the list passed to builtins.listToAttrs"));
 
         ASSERT_TRACE2("listToAttrs [ { name = \"foo\"; } ]",
@@ -519,12 +585,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, intersectAttrs) {
         ASSERT_TRACE2("intersectAttrs [] []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the first argument passed to builtins.intersectAttrs"));
 
         ASSERT_TRACE2("intersectAttrs {} []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the second argument passed to builtins.intersectAttrs"));
 
     }
@@ -533,22 +599,22 @@ namespace nix {
     TEST_F(ErrorTraceTest, catAttrs) {
         ASSERT_TRACE2("catAttrs [] {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.catAttrs"));
 
         ASSERT_TRACE2("catAttrs \"foo\" {}",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.catAttrs"));
 
         ASSERT_TRACE2("catAttrs \"foo\" [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a set"),
                       hintfmt("while evaluating an element in the list passed as second argument to builtins.catAttrs"));
 
         ASSERT_TRACE2("catAttrs \"foo\" [ { foo = 1; } 1 { bar = 5;} ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a set"),
                       hintfmt("while evaluating an element in the list passed as second argument to builtins.catAttrs"));
 
     }
@@ -565,7 +631,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, mapAttrs) {
         ASSERT_TRACE2("mapAttrs [] []",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a set"),
                       hintfmt("while evaluating the second argument passed to builtins.mapAttrs"));
 
         // XXX: defered
@@ -590,12 +656,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, zipAttrsWith) {
         ASSERT_TRACE2("zipAttrsWith [] [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "a list"),
+                      hintfmt("value is %s while %s was expected", "a list", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.zipAttrsWith"));
 
         ASSERT_TRACE2("zipAttrsWith (_: 1) [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a set"),
                       hintfmt("while evaluating a value of the list passed as second argument to builtins.zipAttrsWith"));
 
         // XXX: How to properly tell that the fucntion takes two arguments ?
@@ -622,7 +688,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, elemAt) {
         ASSERT_TRACE2("elemAt \"foo\" (-1)",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.elemAt"));
 
         ASSERT_TRACE1("elemAt [] (-1)",
@@ -639,7 +705,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, head) {
         ASSERT_TRACE2("head 1",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.elemAt"));
 
         ASSERT_TRACE1("head []",
@@ -652,7 +718,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, tail) {
         ASSERT_TRACE2("tail 1",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.tail"));
 
         ASSERT_TRACE1("tail []",
@@ -665,12 +731,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, map) {
         ASSERT_TRACE2("map 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.map"));
 
         ASSERT_TRACE2("map 1 [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.map"));
 
     }
@@ -679,17 +745,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, filter) {
         ASSERT_TRACE2("filter 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.filter"));
 
         ASSERT_TRACE2("filter 1 [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.filter"));
 
         ASSERT_TRACE2("filter (_: 5) [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the return value of the filtering function passed to builtins.filter"));
 
     }
@@ -698,7 +764,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, elem) {
         ASSERT_TRACE2("elem 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.elem"));
 
     }
@@ -707,17 +773,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, concatLists) {
         ASSERT_TRACE2("concatLists 1",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.concatLists"));
 
         ASSERT_TRACE2("concatLists [ 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating a value of the list passed to builtins.concatLists"));
 
         ASSERT_TRACE2("concatLists [ [1] \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating a value of the list passed to builtins.concatLists"));
 
     }
@@ -726,12 +792,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, length) {
         ASSERT_TRACE2("length 1",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.length"));
 
         ASSERT_TRACE2("length \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the first argument passed to builtins.length"));
 
     }
@@ -740,22 +806,24 @@ namespace nix {
     TEST_F(ErrorTraceTest, foldlPrime) {
         ASSERT_TRACE2("foldl' 1 \"foo\" true",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.foldlStrict"));
 
         ASSERT_TRACE2("foldl' (_: 1) \"foo\" true",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a Boolean"),
+                      hintfmt("value is %s while %s was expected", "a Boolean", "a list"),
                       hintfmt("while evaluating the third argument passed to builtins.foldlStrict"));
 
         ASSERT_TRACE1("foldl' (_: 1) \"foo\" [ true ]",
                       TypeError,
                       hintfmt("attempt to call something which is not a function but %s", "an integer"));
 
-        ASSERT_TRACE2("foldl' (a: b: a && b) \"foo\" [ true ]",
+        ASSERT_TRACE4("foldl' (a: b: a && b) \"foo\" [ true ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "a string"),
-                      hintfmt("in the left operand of the AND (&&) operator"));
+                      hintfmt("value is %s while %s was expected", "a string", "a Boolean"),
+                      hintfmt("while evaluating the first argument of the logical conjugation/and operator (&&)"),
+                      hintfmt("while applying the binary operator '%s'", "&&"),
+                      hintfmt("from call site"));
 
     }
 
@@ -763,17 +831,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, any) {
         ASSERT_TRACE2("any 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.any"));
 
         ASSERT_TRACE2("any (_: 1) \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.any"));
 
         ASSERT_TRACE2("any (_: 1) [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the return value of the function passed to builtins.any"));
 
     }
@@ -782,17 +850,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, all) {
         ASSERT_TRACE2("all 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.all"));
 
         ASSERT_TRACE2("all (_: 1) \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.all"));
 
         ASSERT_TRACE2("all (_: 1) [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the return value of the function passed to builtins.all"));
 
     }
@@ -801,12 +869,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, genList) {
         ASSERT_TRACE2("genList 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the second argument passed to builtins.genList"));
 
         ASSERT_TRACE2("genList 1 2",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.genList", "an integer"));
 
         // XXX: defered
@@ -825,12 +893,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, sort) {
         ASSERT_TRACE2("sort 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.sort"));
 
         ASSERT_TRACE2("sort 1 [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.sort"));
 
         ASSERT_TRACE1("sort (_: 1) [ \"foo\" \"bar\" ]",
@@ -839,7 +907,7 @@ namespace nix {
 
         ASSERT_TRACE2("sort (_: _: 1) [ \"foo\" \"bar\" ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the return value of the sorting function passed to builtins.sort"));
 
         // XXX: Trace too deep, need better asserts
@@ -857,17 +925,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, partition) {
         ASSERT_TRACE2("partition 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.partition"));
 
         ASSERT_TRACE2("partition (_: 1) \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.partition"));
 
         ASSERT_TRACE2("partition (_: 1) [ \"foo\" ]",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the return value of the partition function passed to builtins.partition"));
 
     }
@@ -876,17 +944,17 @@ namespace nix {
     TEST_F(ErrorTraceTest, groupBy) {
         ASSERT_TRACE2("groupBy 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.groupBy"));
 
         ASSERT_TRACE2("groupBy (_: 1) \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.groupBy"));
 
         ASSERT_TRACE2("groupBy (x: x) [ \"foo\" \"bar\" 1 ]",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the return value of the grouping function passed to builtins.groupBy"));
 
     }
@@ -895,22 +963,22 @@ namespace nix {
     TEST_F(ErrorTraceTest, concatMap) {
         ASSERT_TRACE2("concatMap 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a function was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a function"),
                       hintfmt("while evaluating the first argument passed to builtins.concatMap"));
 
         ASSERT_TRACE2("concatMap (x: 1) \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the second argument passed to builtins.concatMap"));
 
         ASSERT_TRACE2("concatMap (x: 1) [ \"foo\" ] # TODO",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a list"),
                       hintfmt("while evaluating the return value of the function passed to buitlins.concatMap"));
 
         ASSERT_TRACE2("concatMap (x: \"foo\") [ 1 2 ] # TODO",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the return value of the function passed to buitlins.concatMap"));
 
     }
@@ -919,12 +987,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, add) {
         ASSERT_TRACE2("add \"foo\" 1",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the first argument of the addition"));
 
         ASSERT_TRACE2("add 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the second argument of the addition"));
 
     }
@@ -933,12 +1001,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, sub) {
         ASSERT_TRACE2("sub \"foo\" 1",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the first argument of the subtraction"));
 
         ASSERT_TRACE2("sub 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the second argument of the subtraction"));
 
     }
@@ -947,12 +1015,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, mul) {
         ASSERT_TRACE2("mul \"foo\" 1",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the first argument of the multiplication"));
 
         ASSERT_TRACE2("mul 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the second argument of the multiplication"));
 
     }
@@ -961,12 +1029,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, div) {
         ASSERT_TRACE2("div \"foo\" 1 # TODO: an integer was expected -> a number",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the first operand of the division"));
 
         ASSERT_TRACE2("div 1 \"foo\"",
                       TypeError,
-                      hintfmt("value is %s while a float was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a float"),
                       hintfmt("while evaluating the second operand of the division"));
 
         ASSERT_TRACE1("div \"foo\" 0",
@@ -979,12 +1047,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, bitAnd) {
         ASSERT_TRACE2("bitAnd 1.1 2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the first argument passed to builtins.bitAnd"));
 
         ASSERT_TRACE2("bitAnd 1 2.2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the second argument passed to builtins.bitAnd"));
 
     }
@@ -993,12 +1061,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, bitOr) {
         ASSERT_TRACE2("bitOr 1.1 2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the first argument passed to builtins.bitOr"));
 
         ASSERT_TRACE2("bitOr 1 2.2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the second argument passed to builtins.bitOr"));
 
     }
@@ -1007,12 +1075,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, bitXor) {
         ASSERT_TRACE2("bitXor 1.1 2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the first argument passed to builtins.bitXor"));
 
         ASSERT_TRACE2("bitXor 1 2.2",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a float"),
+                      hintfmt("value is %s while %s was expected", "a float", "an integer"),
                       hintfmt("while evaluating the second argument passed to builtins.bitXor"));
 
     }
@@ -1047,12 +1115,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, substring) {
         ASSERT_TRACE2("substring {} \"foo\" true",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "an integer"),
                       hintfmt("while evaluating the first argument (the start offset) passed to builtins.substring"));
 
         ASSERT_TRACE2("substring 3 \"foo\" true",
                       TypeError,
-                      hintfmt("value is %s while an integer was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "an integer"),
                       hintfmt("while evaluating the second argument (the substring length) passed to builtins.substring"));
 
         ASSERT_TRACE2("substring 0 3 {}",
@@ -1079,7 +1147,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, hashString) {
         ASSERT_TRACE2("hashString 1 {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.hashString"));
 
         ASSERT_TRACE1("hashString \"foo\" \"content\"",
@@ -1088,7 +1156,7 @@ namespace nix {
 
         ASSERT_TRACE2("hashString \"sha256\" {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a string"),
                       hintfmt("while evaluating the second argument passed to builtins.hashString"));
 
     }
@@ -1097,12 +1165,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, match) {
         ASSERT_TRACE2("match 1 {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.match"));
 
         ASSERT_TRACE2("match \"foo\" {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a string"),
                       hintfmt("while evaluating the second argument passed to builtins.match"));
 
         ASSERT_TRACE1("match \"(.*\" \"\"",
@@ -1115,12 +1183,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, split) {
         ASSERT_TRACE2("split 1 {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.split"));
 
         ASSERT_TRACE2("split \"foo\" {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a string"),
                       hintfmt("while evaluating the second argument passed to builtins.split"));
 
         ASSERT_TRACE1("split \"f(o*o\" \"1foo2\"",
@@ -1133,12 +1201,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, concatStringsSep) {
         ASSERT_TRACE2("concatStringsSep 1 {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument (the separator string) passed to builtins.concatStringsSep"));
 
         ASSERT_TRACE2("concatStringsSep \"foo\" {}",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a list"),
                       hintfmt("while evaluating the second argument (the list of strings to concat) passed to builtins.concatStringsSep"));
 
         ASSERT_TRACE2("concatStringsSep \"foo\" [ 1 2 {} ] # TODO: coerce to string is buggy",
@@ -1152,7 +1220,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, parseDrvName) {
         ASSERT_TRACE2("parseDrvName 1",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.parseDrvName"));
 
     }
@@ -1161,12 +1229,12 @@ namespace nix {
     TEST_F(ErrorTraceTest, compareVersions) {
         ASSERT_TRACE2("compareVersions 1 {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.compareVersions"));
 
         ASSERT_TRACE2("compareVersions \"abd\" {}",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "a set"),
+                      hintfmt("value is %s while %s was expected", "a set", "a string"),
                       hintfmt("while evaluating the second argument passed to builtins.compareVersions"));
 
     }
@@ -1175,7 +1243,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, splitVersion) {
         ASSERT_TRACE2("splitVersion 1",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the first argument passed to builtins.splitVersion"));
 
     }
@@ -1189,7 +1257,7 @@ namespace nix {
     TEST_F(ErrorTraceTest, derivationStrict) {
         ASSERT_TRACE2("derivationStrict \"\"",
                       TypeError,
-                      hintfmt("value is %s while a set was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a set"),
                       hintfmt("while evaluating the argument passed to builtins.derivationStrict"));
 
         ASSERT_TRACE2("derivationStrict {}",
@@ -1199,7 +1267,7 @@ namespace nix {
 
         ASSERT_TRACE2("derivationStrict { name = 1; }",
                       TypeError,
-                      hintfmt("value is %s while a string was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a string"),
                       hintfmt("while evaluating the `name` attribute passed to builtins.derivationStrict"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; }",
@@ -1209,12 +1277,12 @@ namespace nix {
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; __structuredAttrs = 15; }",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the `__structuredAttrs` attribute passed to builtins.derivationStrict"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; __ignoreNulls = 15; }",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "an integer"),
+                      hintfmt("value is %s while %s was expected", "an integer", "a Boolean"),
                       hintfmt("while evaluating the `__ignoreNulls` attribute passed to builtins.derivationStrict"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; outputHashMode = 15; }",
@@ -1259,22 +1327,22 @@ namespace nix {
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; system = 1; outputs = \"out\"; __contentAddressed = \"true\"; }",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a Boolean"),
                       hintfmt("while evaluating the attribute '__contentAddressed' of derivation 'foo'"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; system = 1; outputs = \"out\"; __impure = \"true\"; }",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a Boolean"),
                       hintfmt("while evaluating the attribute '__impure' of derivation 'foo'"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; system = 1; outputs = \"out\"; __impure = \"true\"; }",
                       TypeError,
-                      hintfmt("value is %s while a Boolean was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a Boolean"),
                       hintfmt("while evaluating the attribute '__impure' of derivation 'foo'"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; system = 1; outputs = \"out\"; args = \"foo\"; }",
                       TypeError,
-                      hintfmt("value is %s while a list was expected", "a string"),
+                      hintfmt("value is %s while %s was expected", "a string", "a list"),
                       hintfmt("while evaluating the attribute 'args' of derivation 'foo'"));
 
         ASSERT_TRACE2("derivationStrict { name = \"foo\"; builder = 1; system = 1; outputs = \"out\"; args = [ {} ]; }",

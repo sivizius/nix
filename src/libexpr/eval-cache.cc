@@ -372,7 +372,7 @@ AttrCursor::AttrCursor(
 AttrKey AttrCursor::getKey()
 {
     if (!parent)
-        return {0, root->state.sEpsilon};
+        return {0, root->state.symbols.epsilon};
     if (!parent->first->cachedValue) {
         parent->first->cachedValue = root->db->getAttr(parent->first->getKey());
         assert(parent->first->cachedValue);
@@ -739,13 +739,13 @@ std::vector<Symbol> AttrCursor::getAttrs()
 
 bool AttrCursor::isDerivation()
 {
-    auto aType = maybeGetAttr("type");
+    auto aType = maybeGetAttr(root->state.symbols.type);
     return aType && aType->getString() == "derivation";
 }
 
 StorePath AttrCursor::forceDerivation()
 {
-    auto aDrvPath = getAttr(root->state.sDrvPath, true);
+    auto aDrvPath = getAttr(root->state.symbols.drvPath, true);
     auto drvPath = root->state.store->parseStorePath(aDrvPath->getString());
     if (!root->state.store->isValidPath(drvPath) && !settings.readOnlyMode) {
         /* The eval cache contains 'drvPath', but the actual path has

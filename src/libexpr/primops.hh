@@ -11,10 +11,10 @@ struct RegisterPrimOp
 {
     struct Info
     {
-        std::string name;
-        std::vector<std::string> args;
+        std::string_view name;
+        std::vector<std::string_view> args;
         size_t arity = 0;
-        const char * doc;
+        std::string_view doc;
         PrimOpFun fun;
         std::optional<ExperimentalFeature> experimentalFeature;
     };
@@ -26,8 +26,13 @@ struct RegisterPrimOp
        will get called during EvalState initialization, so there
        may be primops not yet added and builtins is not yet sorted. */
     RegisterPrimOp(
-        std::string name,
+        std::string_view name,
         size_t arity,
+        PrimOpFun fun);
+
+    RegisterPrimOp(
+        std::string_view name,
+        std::vector<std::string_view> args,
         PrimOpFun fun);
 
     RegisterPrimOp(Info && info);

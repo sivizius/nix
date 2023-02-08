@@ -54,9 +54,31 @@ Value & BindingsBuilder::alloc(std::string_view name, PosIdx pos)
 }
 
 
+void BindingsBuilder::allocOp(
+    Symbol symbol,
+    std::string_view op,
+    std::vector<std::string_view> args,
+    std::string_view doc,
+    PrimOpFun fun
+)
+{
+    alloc(symbol, noPos).mkPrimOp(new PrimOp {
+        .fun   = fun,
+        .arity = args.size(),
+        .name  = op,
+        .args  = args,
+        .doc   = doc,
+        .isOp  = true
+    });
+}
+
+
+
 void Bindings::sort()
 {
-    if (size_) std::sort(begin(), end());
+    if (size_ != 0) {
+        std::sort(begin(), end());
+    }
 }
 
 

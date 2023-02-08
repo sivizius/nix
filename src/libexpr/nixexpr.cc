@@ -37,6 +37,15 @@ struct PosAdapter : AbstractPos
                 } catch (Error &) {
                     return std::nullopt;
                 }
+            },
+            [](const Pos::Builtin & builtin) -> std::optional<std::string> {
+                std::string fakeSource = std::string(builtin.name) + " = ";
+                for (std::string_view arg : builtin.args) {
+                    fakeSource += arg;
+                    fakeSource += ": ";
+                }
+                fakeSource += "…;";
+                return fakeSource;
             }
         }, origin);
     }
@@ -46,8 +55,11 @@ struct PosAdapter : AbstractPos
         std::visit(overloaded {
             [&](const Pos::none_tag &) { out << "«none»"; },
             [&](const Pos::Stdin &) { out << "«stdin»"; },
-            [&](const Pos::String & s) { out << "«string»"; },
-            [&](const Path & path) { out << path; }
+            [&](const Pos::String &) { out << "«string»"; },
+            [&](const Path & path) { out << path; },
+            [&](const Pos::Builtin & builtin) {
+                out << "«builtin " << builtin.name << "»";
+            }
         }, origin);
     }
 };
@@ -143,11 +155,9 @@ void ExprSelect::show(const SymbolTable & symbols, std::ostream & str) const
     }
 }
 
-void ExprOpHasAttr::show(const SymbolTable & symbols, std::ostream & str) const
+void ExprAttrPath::show(const SymbolTable & symbols, std::ostream & str) const
 {
-    str << "((";
-    e->show(symbols, str);
-    str << ") ? " << showAttrPath(symbols, attrPath) << ")";
+    str << showAttrPath(symbols, *path);
 }
 
 void ExprAttrs::show(const SymbolTable & symbols, std::ostream & str) const
@@ -229,6 +239,27 @@ void ExprCall::show(const SymbolTable & symbols, std::ostream & str) const
     str << ')';
 }
 
+void ExprCallOp::show(const SymbolTable & symbols, std::ostream & str) const
+{
+    if (!op.empty()) {
+        str << '(';
+        if (arg2) {
+            str << '(';
+            arg1->show(symbols, str);
+            str << ") " << op << " (";
+            arg2->show(symbols, str);
+        } else {
+            str << op << " (";
+            arg1->show(symbols, str);
+        }
+        str << "))";
+    } else {
+        str << '<';
+        arg1->show(symbols, str);
+        str << '>';
+    }
+}
+
 void ExprLet::show(const SymbolTable & symbols, std::ostream & str) const
 {
     str << "(let ";
@@ -274,13 +305,6 @@ void ExprAssert::show(const SymbolTable & symbols, std::ostream & str) const
     body->show(symbols, str);
 }
 
-void ExprOpNot::show(const SymbolTable & symbols, std::ostream & str) const
-{
-    str << "(! ";
-    e->show(symbols, str);
-    str << ")";
-}
-
 void ExprConcatStrings::show(const SymbolTable & symbols, std::ostream & str) const
 {
     bool first = true;
@@ -290,11 +314,6 @@ void ExprConcatStrings::show(const SymbolTable & symbols, std::ostream & str) co
         i.second->show(symbols, str);
     }
     str << ")";
-}
-
-void ExprPos::show(const SymbolTable & symbols, std::ostream & str) const
-{
-    str << "__curPos";
 }
 
 
@@ -406,15 +425,17 @@ void ExprSelect::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv>
             i.expr->bindVars(es, env);
 }
 
-void ExprOpHasAttr::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
+void ExprAttrPath::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
 {
-    if (es.debugRepl)
+    if (es.debugRepl) {
         es.exprEnvs.insert(std::make_pair(this, env));
+    }
 
-    e->bindVars(es, env);
-    for (auto & i : attrPath)
-        if (!i.symbol)
+    for (auto i : *path) {
+        if (!i.symbol) {
             i.expr->bindVars(es, env);
+        }
+    }
 }
 
 void ExprAttrs::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
@@ -496,6 +517,21 @@ void ExprCall::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> &
         e->bindVars(es, env);
 }
 
+void ExprCallOp::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
+{
+    if (es.debugRepl) {
+        es.exprEnvs.insert(std::make_pair(this, env));
+    }
+
+    ops = new ExprVar(es.symbols.__operators);
+
+    ops->bindVars(es, env);
+    arg1->bindVars(es, env);
+    if (arg2) {
+        arg2->bindVars(es, env);
+    }
+}
+
 void ExprLet::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
 {
     if (es.debugRepl)
@@ -559,14 +595,6 @@ void ExprAssert::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv>
     body->bindVars(es, env);
 }
 
-void ExprOpNot::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
-{
-    if (es.debugRepl)
-        es.exprEnvs.insert(std::make_pair(this, env));
-
-    e->bindVars(es, env);
-}
-
 void ExprConcatStrings::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
 {
     if (es.debugRepl)
@@ -574,12 +602,6 @@ void ExprConcatStrings::bindVars(EvalState & es, const std::shared_ptr<const Sta
 
     for (auto & i : *this->es)
         i.second->bindVars(es, env);
-}
-
-void ExprPos::bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env)
-{
-    if (es.debugRepl)
-        es.exprEnvs.insert(std::make_pair(this, env));
 }
 
 
@@ -609,10 +631,10 @@ std::string ExprLambda::showNamePos(const EvalState & state) const
 
 /* Symbol table. */
 
-size_t SymbolTable::totalSize() const
+size_t MinimalSymbolTable::totalSize() const
 {
     size_t n = 0;
-    dump([&] (const std::string & s) { n += s.size(); });
+    dump([&] (std::string_view s) { n += s.size(); });
     return n;
 }
 

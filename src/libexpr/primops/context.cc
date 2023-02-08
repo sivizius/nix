@@ -99,16 +99,14 @@ static void prim_getContext(EvalState & state, const PosIdx pos, Value * * args,
 
     auto attrs = state.buildBindings(contextInfos.size());
 
-    auto sPath = state.symbols.create("path");
-    auto sAllOutputs = state.symbols.create("allOutputs");
     for (const auto & info : contextInfos) {
         auto infoAttrs = state.buildBindings(3);
         if (info.second.path)
-            infoAttrs.alloc(sPath).mkBool(true);
+            infoAttrs.alloc(state.symbols.path).mkBool(true);
         if (info.second.allOutputs)
-            infoAttrs.alloc(sAllOutputs).mkBool(true);
+            infoAttrs.alloc(state.symbols.allOutputs).mkBool(true);
         if (!info.second.outputs.empty()) {
-            auto & outputsVal = infoAttrs.alloc(state.sOutputs);
+            auto & outputsVal = infoAttrs.alloc(state.symbols.outputs);
             state.mkList(outputsVal, info.second.outputs.size());
             for (const auto & [i, output] : enumerate(info.second.outputs))
                 (outputsVal.listElems()[i] = state.allocValue())->mkString(output);
@@ -134,8 +132,6 @@ static void prim_appendContext(EvalState & state, const PosIdx pos, Value * * ar
 
     state.forceAttrs(*args[1], pos, "while evaluating the second argument passed to builtins.appendContext");
 
-    auto sPath = state.symbols.create("path");
-    auto sAllOutputs = state.symbols.create("allOutputs");
     for (auto & i : *args[1]->attrs) {
         const auto & name = state.symbols[i.name];
         if (!state.store->isStorePath(name))
@@ -146,13 +142,13 @@ static void prim_appendContext(EvalState & state, const PosIdx pos, Value * * ar
         if (!settings.readOnlyMode)
             state.store->ensurePath(state.store->parseStorePath(name));
         state.forceAttrs(*i.value, i.pos, "while evaluating the value of a string context");
-        auto iter = i.value->attrs->find(sPath);
+        auto iter = i.value->attrs->find(state.symbols.path);
         if (iter != i.value->attrs->end()) {
             if (state.forceBool(*iter->value, iter->pos, "while evaluating the `path` attribute of a string context"))
                 context.emplace(name);
         }
 
-        iter = i.value->attrs->find(sAllOutputs);
+        iter = i.value->attrs->find(state.symbols.allOutputs);
         if (iter != i.value->attrs->end()) {
             if (state.forceBool(*iter->value, iter->pos, "while evaluating the `allOutputs` attribute of a string context")) {
                 if (!isDerivation(name)) {
@@ -165,7 +161,7 @@ static void prim_appendContext(EvalState & state, const PosIdx pos, Value * * ar
             }
         }
 
-        iter = i.value->attrs->find(state.sOutputs);
+        iter = i.value->attrs->find(state.symbols.outputs);
         if (iter != i.value->attrs->end()) {
             state.forceList(*iter->value, iter->pos, "while evaluating the `outputs` attribute of a string context");
             if (iter->value->listSize() && !isDerivation(name)) {

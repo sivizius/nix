@@ -49,7 +49,7 @@ DrvInfo::DrvInfo(EvalState & state, ref<Store> store, const std::string & drvPat
 std::string DrvInfo::queryName() const
 {
     if (name == "" && attrs) {
-        auto i = attrs->find(state->sName);
+        auto i = attrs->find(state->symbols.name);
         if (i == attrs->end()) throw TypeError("derivation name missing");
         name = state->forceStringNoCtx(*i->value, noPos, "while evaluating the 'name' attribute of a derivation");
     }
@@ -60,7 +60,7 @@ std::string DrvInfo::queryName() const
 std::string DrvInfo::querySystem() const
 {
     if (system == "" && attrs) {
-        auto i = attrs->find(state->sSystem);
+        auto i = attrs->find(state->symbols.system);
         system = i == attrs->end() ? "unknown" : state->forceStringNoCtx(*i->value, i->pos, "while evaluating the 'system' attribute of a derivation");
     }
     return system;
@@ -70,7 +70,7 @@ std::string DrvInfo::querySystem() const
 std::optional<StorePath> DrvInfo::queryDrvPath() const
 {
     if (!drvPath && attrs) {
-        Bindings::iterator i = attrs->find(state->sDrvPath);
+        Bindings::iterator i = attrs->find(state->symbols.drvPath);
         PathSet context;
         if (i == attrs->end())
             drvPath = {std::nullopt};
@@ -92,7 +92,7 @@ StorePath DrvInfo::requireDrvPath() const
 StorePath DrvInfo::queryOutPath() const
 {
     if (!outPath && attrs) {
-        Bindings::iterator i = attrs->find(state->sOutPath);
+        Bindings::iterator i = attrs->find(state->symbols.outPath);
         PathSet context;
         if (i != attrs->end())
             outPath = state->coerceToStorePath(i->pos, *i->value, context, "while evaluating the output path of a derivation");
@@ -108,7 +108,7 @@ DrvInfo::Outputs DrvInfo::queryOutputs(bool withPaths, bool onlyOutputsToInstall
     if (outputs.empty()) {
         /* Get the ‘outputs’ list. */
         Bindings::iterator i;
-        if (attrs && (i = attrs->find(state->sOutputs)) != attrs->end()) {
+        if (attrs && (i = attrs->find(state->symbols.outputs)) != attrs->end()) {
             state->forceList(*i->value, i->pos, "while evaluating the 'outputs' attribute of a derivation");
 
             /* For each output... */
@@ -122,7 +122,7 @@ DrvInfo::Outputs DrvInfo::queryOutputs(bool withPaths, bool onlyOutputsToInstall
                     state->forceAttrs(*out->value, i->pos, "while evaluating an output of a derivation");
 
                     /* And evaluate its ‘outPath’ attribute. */
-                    Bindings::iterator outPath = out->value->attrs->find(state->sOutPath);
+                    Bindings::iterator outPath = out->value->attrs->find(state->symbols.outPath);
                     if (outPath == out->value->attrs->end()) continue; // FIXME: throw error?
                     PathSet context;
                     outputs.emplace(output, state->coerceToStorePath(outPath->pos, *outPath->value, context, "while evaluating an output path of a derivation"));
@@ -137,7 +137,7 @@ DrvInfo::Outputs DrvInfo::queryOutputs(bool withPaths, bool onlyOutputsToInstall
         return outputs;
 
     Bindings::iterator i;
-    if (attrs && (i = attrs->find(state->sOutputSpecified)) != attrs->end() && state->forceBool(*i->value, i->pos, "while evaluating the 'outputSpecified' attribute of a derivation")) {
+    if (attrs && (i = attrs->find(state->symbols.outputSpecified)) != attrs->end() && state->forceBool(*i->value, i->pos, "while evaluating the 'outputSpecified' attribute of a derivation")) {
         Outputs result;
         auto out = outputs.find(queryOutputName());
         if (out == outputs.end())
@@ -168,7 +168,7 @@ DrvInfo::Outputs DrvInfo::queryOutputs(bool withPaths, bool onlyOutputsToInstall
 std::string DrvInfo::queryOutputName() const
 {
     if (outputName == "" && attrs) {
-        Bindings::iterator i = attrs->find(state->sOutputName);
+        Bindings::iterator i = attrs->find(state->symbols.outputName);
         outputName = i != attrs->end() ? state->forceStringNoCtx(*i->value, noPos, "while evaluating the output name of a derivation") : "";
     }
     return outputName;
@@ -179,7 +179,7 @@ Bindings * DrvInfo::getMeta()
 {
     if (meta) return meta;
     if (!attrs) return 0;
-    Bindings::iterator a = attrs->find(state->sMeta);
+    Bindings::iterator a = attrs->find(state->symbols.meta);
     if (a == attrs->end()) return 0;
     state->forceAttrs(*a->value, a->pos, "while evaluating the 'meta' attribute of a derivation");
     meta = a->value->attrs;
@@ -206,7 +206,7 @@ bool DrvInfo::checkMeta(Value & v)
         return true;
     }
     else if (v.type() == nAttrs) {
-        Bindings::iterator i = v.attrs->find(state->sOutPath);
+        Bindings::iterator i = v.attrs->find(state->symbols.outPath);
         if (i != v.attrs->end()) return false;
         for (auto & i : *v.attrs)
             if (!checkMeta(*i.value)) return false;
@@ -362,7 +362,7 @@ static void getDerivations(EvalState & state, Value & vIn,
 
         /* !!! undocumented hackery to support combining channels in
            nix-env.cc. */
-        bool combineChannels = v.attrs->find(state.symbols.create("_combineChannels")) != v.attrs->end();
+        bool combineChannels = v.attrs->find(state.symbols._combineChannels) != v.attrs->end();
 
         /* Consider the attributes in sorted order to get more
            deterministic behaviour in nix-env operations (e.g. when
@@ -381,7 +381,7 @@ static void getDerivations(EvalState & state, Value & vIn,
                    should we recurse into it?  => Only if it has a
                    `recurseForDerivations = true' attribute. */
                 if (i->value->type() == nAttrs) {
-                    Bindings::iterator j = i->value->attrs->find(state.sRecurseForDerivations);
+                    Bindings::iterator j = i->value->attrs->find(state.symbols.recurseForDerivations);
                     if (j != i->value->attrs->end() && state.forceBool(*j->value, j->pos, "while evaluating the attribute `recurseForDerivations`"))
                         getDerivations(state, *i->value, pathPrefix2, autoArgs, drvs, done, ignoreAssertionFailures);
                 }

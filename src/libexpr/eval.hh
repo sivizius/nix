@@ -28,9 +28,11 @@ struct PrimOp
 {
     PrimOpFun fun;
     size_t arity;
-    std::string name;
-    std::vector<std::string> args;
-    const char * doc = nullptr;
+    PosIdx pos;
+    std::string_view name;
+    std::vector<std::string_view> args;
+    std::string_view doc;
+    const bool isOp = false;
 };
 
 #if HAVE_BOEHMGC
@@ -63,6 +65,11 @@ typedef std::map<Path, StorePath> SrcToStore;
 std::string printValue(const EvalState & state, const Value & v);
 std::ostream & operator << (std::ostream & os, const ValueType t);
 
+/* Return the name of the given 'type'. */
+std::string_view showType(ValueType type);
+
+/* Return a string representing the type of the given 'value'. */
+std::string showType(const Value & value);
 
 typedef std::pair<std::string, std::string> SearchPathElem;
 typedef std::list<SearchPathElem> SearchPath;
@@ -131,16 +138,6 @@ public:
 
     static inline std::string derivationNixPath = "//builtin/derivation.nix";
 
-    const Symbol sWith, sOutPath, sDrvPath, sType, sMeta, sName, sValue,
-        sSystem, sOverrides, sOutputs, sOutputName, sIgnoreNulls,
-        sFile, sLine, sColumn, sFunctor, sToString,
-        sRight, sWrong, sStructuredAttrs, sBuilder, sArgs,
-        sContentAddressed, sImpure,
-        sOutputHash, sOutputHashAlgo, sOutputHashMode,
-        sRecurseForDerivations,
-        sDescription, sSelf, sEpsilon, sStartSet, sOperator, sKey, sPath,
-        sPrefix,
-        sOutputSpecified;
     Symbol sDerivationNix;
 
     /* If set, force copying files to the Nix store even if they
@@ -175,7 +172,7 @@ public:
         if (i != exprEnvs.end())
             return i->second;
         else
-            return std::shared_ptr<const StaticEnv>();;
+            return std::shared_ptr<const StaticEnv>();
     }
 
     void runDebugRepl(const Error * error, const Env & env, const Expr & expr);
@@ -213,6 +210,29 @@ public:
     ErrorBuilder & error(const Args & ... args) {
         errorBuilder = ErrorBuilder::create(*this, args...);
         return *errorBuilder;
+    }
+
+    [[gnu::noinline]]
+    void unexpectedType(const Value & value, ValueType expected)
+    {
+        error("value is %1% while %2% was expected", showType(value), showType(expected))
+        .debugThrow<TypeError>();
+    }
+
+    [[gnu::noinline]]
+    void unexpectedType(const Value & value, ValueType expected, const Env & env, const Expr & expr)
+    {
+        error("value is %1% while %2% was expected", showType(value), showType(expected))
+        .withFrame(env, expr)
+        .debugThrow<TypeError>();
+    }
+
+    [[gnu::noinline]]
+    void unexpectedType(const Value & value, ValueType expected, const PosIdx pos, std::string_view errorCtx)
+    {
+        error("value is %1% while %2% was expected", showType(value), showType(expected))
+        .withFrameTrace(pos, errorCtx)
+        .debugThrow<TypeError>();
     }
 
 private:
@@ -360,10 +380,21 @@ public:
     std::string_view forceString(Value & v, PathSet & context, const PosIdx pos, std::string_view errorCtx);
     std::string_view forceStringNoCtx(Value & v, const PosIdx pos, std::string_view errorCtx);
 
+    template<typename... Args>
     [[gnu::noinline]]
-    void addErrorTrace(Error & e, const char * s, const std::string & s2) const;
+    void addErrorTrace(Error & e, const PosIdx pos, std::string_view fs, const Args & ... args) const;
+
+    template<typename... Args>
     [[gnu::noinline]]
-    void addErrorTrace(Error & e, const PosIdx pos, const char * s, const std::string & s2, bool frame = false) const;
+    void addErrorTraceWithFrame(Error & e, const PosIdx pos, std::string_view fs, const Args & ... args) const;
+
+    template<typename... Args>
+    [[gnu::noinline]]
+    void addErrorTrace(Error & e, std::string_view fs, const Args & ... args) const;
+
+    template<typename... Args>
+    [[gnu::noinline]]
+    void addErrorTraceWithFrame(Error & e, std::string_view fs, const Args & ... args) const;
 
 public:
     /* Return true iff the value `v' denotes a derivation (i.e. a
@@ -405,28 +436,25 @@ private:
 
     unsigned int baseEnvDispl = 0;
 
-    void createBaseEnv();
+    void createBaseEnv(const SymbolTable & symbolTable);
 
-    Value * addConstant(const std::string & name, Value & v);
+    Value * addConstant(std::string_view name, Value & v);
 
-    void addConstant(const std::string & name, Value * v);
-
-    Value * addPrimOp(const std::string & name,
-        size_t arity, PrimOpFun primOp);
+    void addConstant(std::string_view name, Value * v);
 
     Value * addPrimOp(PrimOp && primOp);
 
 public:
 
-    Value & getBuiltin(const std::string & name);
+    Value & getBuiltin(Symbol symbol);
 
     struct Doc
     {
         Pos pos;
-        std::optional<std::string> name;
+        std::string_view name;
         size_t arity;
-        std::vector<std::string> args;
-        const char * doc;
+        std::vector<std::string_view> args;
+        std::string_view doc;
     };
 
     std::optional<Doc> getDoc(Value & v);
@@ -438,6 +466,7 @@ private:
     friend struct ExprVar;
     friend struct ExprAttrs;
     friend struct ExprLet;
+    friend struct ExprCallOp;
 
     Expr * parse(
         char * text,
@@ -513,7 +542,7 @@ private:
 
     bool countCalls;
 
-    typedef std::map<std::string, size_t> PrimOpCalls;
+    typedef std::map<std::string_view, size_t> PrimOpCalls;
     PrimOpCalls primOpCalls;
 
     typedef std::map<ExprLambda *, size_t> FunctionCalls;
@@ -524,8 +553,6 @@ private:
     typedef std::map<PosIdx, size_t> AttrSelects;
     AttrSelects attrSelects;
 
-    friend struct ExprOpUpdate;
-    friend struct ExprOpConcatLists;
     friend struct ExprVar;
     friend struct ExprString;
     friend struct ExprInt;
@@ -535,6 +562,7 @@ private:
     friend void prim_getAttr(EvalState & state, const PosIdx pos, Value * * args, Value & v);
     friend void prim_match(EvalState & state, const PosIdx pos, Value * * args, Value & v);
     friend void prim_split(EvalState & state, const PosIdx pos, Value * * args, Value & v);
+    friend void prim_update(EvalState & state, const PosIdx pos, Value * * args, Value & v);
 
     friend struct Value;
 };
@@ -549,10 +577,6 @@ struct DebugTraceStacker {
     EvalState & evalState;
     DebugTrace trace;
 };
-
-/* Return a string representing the type of the value `v'. */
-std::string_view showType(ValueType type);
-std::string showType(const Value & v);
 
 /* If `path' refers to a directory, then append "/default.nix". */
 Path resolveExprPath(Path path);
@@ -649,11 +673,14 @@ struct EvalSettings : Config
 
     Setting<bool> traceVerbose{this, false, "trace-verbose",
         "Whether `builtins.traceVerbose` should trace its first argument when evaluated."};
+
+    Setting<bool> allowOrAsIdentifier{this, true, "allow-or-as-identifier",
+        "Whether to allow the keyword 'or' as a identifier."};
 };
 
 extern EvalSettings evalSettings;
 
-static const std::string corepkgsPrefix{"/__corepkgs__/"};
+static std::string_view corepkgsPrefix = "/__corepkgs__/";
 
 template<class ErrorType>
 void ErrorBuilder::debugThrow()

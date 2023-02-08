@@ -518,7 +518,7 @@ Value * InstallableFlake::getFlakeOutputs(EvalState & state, const flake::Locked
 
     callFlake(state, lockedFlake, *vFlake);
 
-    auto aOutputs = vFlake->attrs->get(state.symbols.create("outputs"));
+    auto aOutputs = vFlake->attrs->get(state.symbols.outputs);
     assert(aOutputs);
 
     state.forceValue(*aOutputs->value, [&]() { return aOutputs->value->determinePos(noPos); });
@@ -548,7 +548,7 @@ ref<eval_cache::EvalCache> openEvalCache(
 
             state.forceAttrs(*vFlake, noPos, "while parsing cached flake data");
 
-            auto aOutputs = vFlake->attrs->get(state.symbols.create("outputs"));
+            auto aOutputs = vFlake->attrs->get(state.symbols.outputs);
             assert(aOutputs);
 
             return aOutputs->value;
@@ -630,9 +630,9 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
 
     std::optional<NixInt> priority;
 
-    if (attr->maybeGetAttr(state->sOutputSpecified)) {
-    } else if (auto aMeta = attr->maybeGetAttr(state->sMeta)) {
-        if (auto aPriority = aMeta->maybeGetAttr("priority"))
+    if (attr->maybeGetAttr(state->symbols.outputSpecified)) {
+    } else if (auto aMeta = attr->maybeGetAttr(state->symbols.meta)) {
+        if (auto aPriority = aMeta->maybeGetAttr(state->symbols.priority))
             priority = aPriority->getInt();
     }
 
@@ -642,13 +642,13 @@ DerivedPathsWithInfo InstallableFlake::toDerivedPaths()
             .outputs = std::visit(overloaded {
                 [&](const ExtendedOutputsSpec::Default & d) -> OutputsSpec {
                     std::set<std::string> outputsToInstall;
-                    if (auto aOutputSpecified = attr->maybeGetAttr(state->sOutputSpecified)) {
+                    if (auto aOutputSpecified = attr->maybeGetAttr(state->symbols.outputSpecified)) {
                         if (aOutputSpecified->getBool()) {
-                            if (auto aOutputName = attr->maybeGetAttr("outputName"))
+                            if (auto aOutputName = attr->maybeGetAttr(state->symbols.outputName))
                                 outputsToInstall = { aOutputName->getString() };
                         }
-                    } else if (auto aMeta = attr->maybeGetAttr(state->sMeta)) {
-                        if (auto aOutputsToInstall = aMeta->maybeGetAttr("outputsToInstall"))
+                    } else if (auto aMeta = attr->maybeGetAttr(state->symbols.meta)) {
+                        if (auto aOutputsToInstall = aMeta->maybeGetAttr(state->symbols.outputsToInstall))
                             for (auto & s : aOutputsToInstall->getListOfStrings())
                                 outputsToInstall.insert(s);
                     }

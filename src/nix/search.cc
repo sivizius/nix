@@ -110,10 +110,10 @@ struct CmdSearch : InstallableCommand, MixJSON
                 };
 
                 if (cursor.isDerivation()) {
-                    DrvName name(cursor.getAttr(state->sName)->getString());
+                    DrvName name(cursor.getAttr(state->symbols.name)->getString());
 
-                    auto aMeta = cursor.maybeGetAttr(state->sMeta);
-                    auto aDescription = aMeta ? aMeta->maybeGetAttr(state->sDescription) : nullptr;
+                    auto aMeta = cursor.maybeGetAttr(state->symbols.meta);
+                    auto aDescription = aMeta ? aMeta->maybeGetAttr(state->symbols.description) : nullptr;
                     auto description = aDescription ? aDescription->getString() : "";
                     std::replace(description.begin(), description.end(), '\n', ' ');
                     auto attrPath2 = concatStringsSep(".", attrPathS);
@@ -182,7 +182,7 @@ struct CmdSearch : InstallableCommand, MixJSON
                     recurse();
 
                 else if (attrPathS[0] == "legacyPackages" && attrPath.size() > 2) {
-                    auto attr = cursor.maybeGetAttr(state->sRecurseForDerivations);
+                    auto attr = cursor.maybeGetAttr(state->symbols.recurseForDerivations);
                     if (attr && attr->getBool())
                         recurse();
                 }

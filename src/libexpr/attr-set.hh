@@ -8,6 +8,7 @@
 
 namespace nix {
 
+typedef void (* PrimOpFun) (EvalState & state, const PosIdx pos, Value * * args, Value & v);
 
 class EvalState;
 struct Value;
@@ -146,6 +147,14 @@ public:
     Value & alloc(Symbol name, PosIdx pos = noPos);
 
     Value & alloc(std::string_view name, PosIdx pos = noPos);
+
+    void allocOp(
+        Symbol symbol,
+        std::string_view op,
+        std::vector<std::string_view> args,
+        std::string_view doc,
+        PrimOpFun fun
+    );
 
     Bindings * finish()
     {

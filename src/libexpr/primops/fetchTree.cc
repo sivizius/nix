@@ -25,7 +25,7 @@ void emitTreeAttrs(
 
     auto storePath = state.store->printStorePath(tree.storePath);
 
-    attrs.alloc(state.sOutPath).mkString(storePath, {storePath});
+    attrs.alloc(state.symbols.outPath).mkString(storePath, {storePath});
 
     // FIXME: support arbitrary input attributes.
 
@@ -106,7 +106,7 @@ static void fetchTree(
 
         fetchers::Attrs attrs;
 
-        if (auto aType = args[0]->attrs->get(state.sType)) {
+        if (auto aType = args[0]->attrs->get(state.symbols.type)) {
             if (type)
                 state.debugThrowLastTrace(EvalError({
                     .msg = hintfmt("unexpected attribute 'type'"),
@@ -122,7 +122,7 @@ static void fetchTree(
         attrs.emplace("type", type.value());
 
         for (auto & attr : *args[0]->attrs) {
-            if (attr.name == state.sType) continue;
+            if (attr.name == state.symbols.type) continue;
             state.forceValue(*attr.value, attr.pos);
             if (attr.value->type() == nPath || attr.value->type() == nString) {
                 auto s = state.coerceToString(attr.pos, *attr.value, context, "", false, false).toOwned();

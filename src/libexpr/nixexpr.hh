@@ -30,8 +30,13 @@ struct Pos
     struct none_tag { };
     struct Stdin { ref<std::string> source; };
     struct String { ref<std::string> source; };
+    struct Builtin
+    {
+        std::string_view name;
+        std::vector<std::string_view> args;
+    };
 
-    typedef std::variant<none_tag, Stdin, String, Path> Origin;
+    typedef std::variant<none_tag, Stdin, String, Path, Builtin> Origin;
 
     Origin origin;
 
@@ -233,18 +238,16 @@ struct ExprSelect : Expr
     PosIdx pos;
     Expr * e, * def;
     AttrPath attrPath;
-    ExprSelect(const PosIdx & pos, Expr * e, const AttrPath & attrPath, Expr * def) : pos(pos), e(e), def(def), attrPath(attrPath) { };
-    ExprSelect(const PosIdx & pos, Expr * e, Symbol name) : pos(pos), e(e), def(0) { attrPath.push_back(AttrName(name)); };
+    ExprSelect(const PosIdx & pos, Expr * e, const AttrPath & attrPath, Expr * def = nullptr) : pos(pos), e(e), def(def), attrPath(attrPath) { };
+    ExprSelect(const PosIdx & pos, Expr * e, Symbol name) : pos(pos), e(e), def(nullptr) { attrPath.push_back(AttrName(name)); };
     PosIdx getPos() const override { return pos; }
     COMMON_METHODS
 };
 
-struct ExprOpHasAttr : Expr
+struct ExprAttrPath : Expr
 {
-    Expr * e;
-    AttrPath attrPath;
-    ExprOpHasAttr(Expr * e, const AttrPath & attrPath) : e(e), attrPath(attrPath) { };
-    PosIdx getPos() const override { return e->getPos(); }
+    AttrPath * path;
+    ExprAttrPath(AttrPath * path) : path(path) {}
     COMMON_METHODS
 };
 
@@ -329,13 +332,11 @@ struct ExprLambda : Expr
     Formals * formals;
     Expr * body;
     ExprLambda(PosIdx pos, Symbol arg, Formals * formals, Expr * body)
-        : pos(pos), arg(arg), formals(formals), body(body)
-    {
-    };
+    : pos(pos), arg(arg), formals(formals), body(body) {}
+    ExprLambda(PosIdx pos, Symbol arg, Expr * body)
+    : pos(pos), arg(arg), formals(nullptr), body(body) {}
     ExprLambda(PosIdx pos, Formals * formals, Expr * body)
-        : pos(pos), formals(formals), body(body)
-    {
-    }
+    : pos(pos),           formals(formals), body(body) {}
     void setName(Symbol name) override;
     std::string showNamePos(const EvalState & state) const;
     inline bool hasFormals() const { return formals != nullptr; }
@@ -351,6 +352,32 @@ struct ExprCall : Expr
     ExprCall(const PosIdx & pos, Expr * fun, std::vector<Expr *> && args)
         : fun(fun), args(args), pos(pos)
     { }
+    PosIdx getPos() const override { return pos; }
+    COMMON_METHODS
+};
+
+struct ExprCallOp : Expr
+{
+    PosIdx pos;
+    std::string_view op;
+    Symbol name;
+    Expr * arg1;
+    Expr * arg2;
+    bool boolean;
+    bool negate;
+    ExprVar * ops = nullptr;
+    ExprCallOp(
+        const PosIdx & pos, std::string_view op, Symbol name,
+        Expr * arg1, Expr * arg2 = nullptr,
+        bool boolean = false, bool negate = false
+    )
+    : pos(pos), op(op), name(name), arg1(arg1), arg2(arg2), boolean(boolean), negate(negate) { }
+    ExprCallOp(
+        const PosIdx & pos, std::string_view op, Symbol name,
+        Expr * arg1, AttrPath * arg2,
+        bool boolean = false, bool negate = false
+    )
+    : pos(pos), op(op), name(name), arg1(arg1), arg2(new ExprAttrPath(arg2)), boolean(boolean), negate(negate) { }
     PosIdx getPos() const override { return pos; }
     COMMON_METHODS
 };
@@ -391,40 +418,6 @@ struct ExprAssert : Expr
     COMMON_METHODS
 };
 
-struct ExprOpNot : Expr
-{
-    Expr * e;
-    ExprOpNot(Expr * e) : e(e) { };
-    COMMON_METHODS
-};
-
-#define MakeBinOp(name, s) \
-    struct name : Expr \
-    { \
-        PosIdx pos; \
-        Expr * e1, * e2; \
-        name(Expr * e1, Expr * e2) : e1(e1), e2(e2) { }; \
-        name(const PosIdx & pos, Expr * e1, Expr * e2) : pos(pos), e1(e1), e2(e2) { }; \
-        void show(const SymbolTable & symbols, std::ostream & str) const override \
-        { \
-            str << "("; e1->show(symbols, str); str << " " s " "; e2->show(symbols, str); str << ")"; \
-        } \
-        void bindVars(EvalState & es, const std::shared_ptr<const StaticEnv> & env) override \
-        { \
-            e1->bindVars(es, env); e2->bindVars(es, env);    \
-        } \
-        void eval(EvalState & state, Env & env, Value & v) override; \
-        PosIdx getPos() const override { return pos; } \
-    };
-
-MakeBinOp(ExprOpEq, "==")
-MakeBinOp(ExprOpNEq, "!=")
-MakeBinOp(ExprOpAnd, "&&")
-MakeBinOp(ExprOpOr, "||")
-MakeBinOp(ExprOpImpl, "->")
-MakeBinOp(ExprOpUpdate, "//")
-MakeBinOp(ExprOpConcatLists, "++")
-
 struct ExprConcatStrings : Expr
 {
     PosIdx pos;
@@ -432,14 +425,6 @@ struct ExprConcatStrings : Expr
     std::vector<std::pair<PosIdx, Expr *>> * es;
     ExprConcatStrings(const PosIdx & pos, bool forceString, std::vector<std::pair<PosIdx, Expr *>> * es)
         : pos(pos), forceString(forceString), es(es) { };
-    PosIdx getPos() const override { return pos; }
-    COMMON_METHODS
-};
-
-struct ExprPos : Expr
-{
-    PosIdx pos;
-    ExprPos(const PosIdx & pos) : pos(pos) { };
     PosIdx getPos() const override { return pos; }
     COMMON_METHODS
 };

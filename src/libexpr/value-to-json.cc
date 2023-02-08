@@ -50,7 +50,7 @@ json printValueAsJSON(EvalState & state, bool strict,
                 out = *maybeString;
                 break;
             }
-            auto i = v.attrs->find(state.sOutPath);
+            auto i = v.attrs->find(state.symbols.outPath);
             if (i == v.attrs->end()) {
                 out = json::object();
                 StringSet names;
@@ -82,6 +82,7 @@ json printValueAsJSON(EvalState & state, bool strict,
 
         case nThunk:
         case nFunction:
+        case nAttrPath:
             auto e = TypeError({
                 .msg = hintfmt("cannot convert %1% to JSON", showType(v)),
                 .errPos = state.positions[v.determinePos(pos)]

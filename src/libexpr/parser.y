@@ -362,7 +362,7 @@ expr: expr_function;
 
 expr_function
   : ID ':' expr_function
-    { $$ = new ExprLambda(CUR_POS, data->symbols.create($1), 0, $3); }
+    { $$ = new ExprLambda(CUR_POS, data->symbols.create($1), $3); }
   | '{' formals '}' ':' expr_function
     { $$ = new ExprLambda(CUR_POS, toFormals(*data, $2), $5); }
   | '{' formals '}' '@' ID ':' expr_function
@@ -379,14 +379,16 @@ expr_function
     { $$ = new ExprAssert(CUR_POS, $2, $4); }
   | WITH expr ';' expr_function
     { $$ = new ExprWith(CUR_POS, $2, $4); }
-  | LET binds IN expr_function
-    { if (!$2->dynamicAttrs.empty())
-        throw ParseError({
-            .msg = hintfmt("dynamic attributes not allowed in let"),
-            .errPos = data->state.positions[CUR_POS]
-        });
-      $$ = new ExprLet($2, $4);
-    }
+  | LET binds IN expr_function {
+      if ($2->dynamicAttrs.empty()) {
+          $$ = new ExprLet($2, $4);
+      } else {
+          throw ParseError({
+              .msg = hintfmt("dynamic attributes not allowed in let"),
+              .errPos = data->state.positions[CUR_POS]
+          });
+      }
+  }
   | expr_if
   ;
 
@@ -396,25 +398,24 @@ expr_if
   ;
 
 expr_op
-  : '!' expr_op %prec NOT { $$ = new ExprOpNot($2); }
-  | '-' expr_op %prec NEGATE { $$ = new ExprCall(CUR_POS, new ExprVar(data->symbols.create("__sub")), {new ExprInt(0), $2}); }
-  | expr_op EQ expr_op { $$ = new ExprOpEq($1, $3); }
-  | expr_op NEQ expr_op { $$ = new ExprOpNEq($1, $3); }
-  | expr_op '<' expr_op { $$ = new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__lessThan")), {$1, $3}); }
-  | expr_op LEQ expr_op { $$ = new ExprOpNot(new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__lessThan")), {$3, $1})); }
-  | expr_op '>' expr_op { $$ = new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__lessThan")), {$3, $1}); }
-  | expr_op GEQ expr_op { $$ = new ExprOpNot(new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__lessThan")), {$1, $3})); }
-  | expr_op AND expr_op { $$ = new ExprOpAnd(makeCurPos(@2, data), $1, $3); }
-  | expr_op OR expr_op { $$ = new ExprOpOr(makeCurPos(@2, data), $1, $3); }
-  | expr_op IMPL expr_op { $$ = new ExprOpImpl(makeCurPos(@2, data), $1, $3); }
-  | expr_op UPDATE expr_op { $$ = new ExprOpUpdate(makeCurPos(@2, data), $1, $3); }
-  | expr_op '?' attrpath { $$ = new ExprOpHasAttr($1, *$3); }
-  | expr_op '+' expr_op
-    { $$ = new ExprConcatStrings(makeCurPos(@2, data), false, new std::vector<std::pair<PosIdx, Expr *> >({{makeCurPos(@1, data), $1}, {makeCurPos(@3, data), $3}})); }
-  | expr_op '-' expr_op { $$ = new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__sub")), {$1, $3}); }
-  | expr_op '*' expr_op { $$ = new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__mul")), {$1, $3}); }
-  | expr_op '/' expr_op { $$ = new ExprCall(makeCurPos(@2, data), new ExprVar(data->symbols.create("__div")), {$1, $3}); }
-  | expr_op CONCAT expr_op { $$ = new ExprOpConcatLists(makeCurPos(@2, data), $1, $3); }
+  : '!' expr_op %prec NOT    { $$ = new ExprCallOp(CUR_POS,              "!",  data->state.symbols.logicNot, $2); }
+  | '-' expr_op %prec NEGATE { $$ = new ExprCallOp(CUR_POS,              "-",  data->state.symbols.negate,   $2); }
+  | expr_op EQ     expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "==", data->state.symbols.equal,    $1, $3, true, false); }
+  | expr_op NEQ    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "!=", data->state.symbols.equal,    $1, $3, true, true ); }
+  | expr_op '<'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "<",  data->state.symbols.lessThan, $1, $3, true, false); }
+  | expr_op LEQ    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), ">=", data->state.symbols.lessThan, $3, $1, true, true ); }
+  | expr_op '>'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "<",  data->state.symbols.lessThan, $3, $1, true, false); }
+  | expr_op GEQ    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), ">=", data->state.symbols.lessThan, $1, $3, true, true ); }
+  | expr_op AND    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "&&", data->state.symbols.logicAnd, $1, $3); }
+  | expr_op OR     expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "||", data->state.symbols.logicOr,  $1, $3); }
+  | expr_op IMPL   expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "->", data->state.symbols.imply,    $1, $3); }
+  | expr_op UPDATE expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "//", data->state.symbols.update,   $1, $3); }
+  | expr_op '?'    attrpath  { $$ = new ExprCallOp(makeCurPos(@2, data), "?",  data->state.symbols.has,      $1, $3); }
+  | expr_op '+'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "+",  data->state.symbols.add,      $1, $3); }
+  | expr_op '-'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "-",  data->state.symbols.subtract, $1, $3); }
+  | expr_op '*'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "*",  data->state.symbols.multiply, $1, $3); }
+  | expr_op '/'    expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "/",  data->state.symbols.divide,   $1, $3); }
+  | expr_op CONCAT expr_op   { $$ = new ExprCallOp(makeCurPos(@2, data), "++", data->state.symbols.concat,   $1, $3); }
   | expr_app
   ;
 
@@ -431,24 +432,35 @@ expr_app
 
 expr_select
   : expr_simple '.' attrpath
-    { $$ = new ExprSelect(CUR_POS, $1, *$3, 0); }
+    { $$ = new ExprSelect(CUR_POS, $1, *$3); }
   | expr_simple '.' attrpath OR_KW expr_select
     { $$ = new ExprSelect(CUR_POS, $1, *$3, $5); }
-  | /* Backwards compatibility: because Nixpkgs has a rarely used
-       function named ‘or’, allow stuff like ‘map or [...]’. */
-    expr_simple OR_KW
-    { $$ = new ExprCall(CUR_POS, $1, {new ExprVar(CUR_POS, data->symbols.create("or"))}); }
+  | expr_simple OR_KW {
+      if (evalSettings.allowOrAsIdentifier) {
+          /* Backwards compatibility: because Nixpkgs has a rarely used
+             function named ‘or’, allow stuff like ‘map or [...]’. */
+          logWarning({
+              .msg = hintfmt(
+                  "The keyword '%1%' as a identifier is deprecated",
+                  "or"
+              )
+          });
+          $$ = new ExprCall(CUR_POS, $1, {new ExprVar(makeCurPos(@2, data), data->state.symbols.or_)});
+      } else {
+          throw ParseError({
+              .msg = hintfmt(
+                  "The keyword '%1%' cannot be used as a identifier",
+                  "or"
+              ),
+              .errPos = data->state.positions[makeCurPos(@2, data)]
+          });
+      }
+  }
   | expr_simple { $$ = $1; }
   ;
 
 expr_simple
-  : ID {
-      std::string_view s = "__curPos";
-      if ($1.l == s.size() && strncmp($1.p, s.data(), s.size()) == 0)
-          $$ = new ExprPos(CUR_POS);
-      else
-          $$ = new ExprVar(CUR_POS, data->symbols.create($1));
-  }
+  : ID { $$ = new ExprVar(CUR_POS, data->symbols.create($1)); }
   | INT { $$ = new ExprInt($1); }
   | FLOAT { $$ = new ExprFloat($1); }
   | '"' string_parts '"' { $$ = $2; }
@@ -462,10 +474,11 @@ expr_simple
   }
   | SPATH {
       std::string path($1.p + 1, $1.l - 2);
-      $$ = new ExprCall(CUR_POS,
-          new ExprVar(data->symbols.create("__findFile")),
-          {new ExprVar(data->symbols.create("__nixPath")),
-           new ExprString(path)});
+      $$ = new ExprCallOp(
+          CUR_POS, "",
+          data->state.symbols.resolvePath,
+          new ExprString(path)
+      );
   }
   | URI {
       static bool noURLLiterals = settings.isExperimentalFeatureEnabled(Xp::NoUrlLiterals);
@@ -480,7 +493,7 @@ expr_simple
   /* Let expressions `let {..., body = ...}' are just desugared
      into `(rec {..., body = ...}).body'. */
   | LET '{' binds '}'
-    { $3->recursive = true; $$ = new ExprSelect(noPos, $3, data->symbols.create("body")); }
+    { $3->recursive = true; $$ = new ExprSelect(noPos, $3, data->state.symbols.body); }
   | REC '{' binds '}'
     { $3->recursive = true; $$ = $3; }
   | '{' binds '}'
@@ -622,7 +635,7 @@ formals
   ;
 
 formal
-  : ID { $$ = new Formal{CUR_POS, data->symbols.create($1), 0}; }
+  : ID { $$ = new Formal{CUR_POS, data->symbols.create($1), nullptr}; }
   | ID '?' expr { $$ = new Formal{CUR_POS, data->symbols.create($1), $3}; }
   ;
 
@@ -730,7 +743,7 @@ Expr * EvalState::parseExprFromString(std::string s, const Path & basePath)
 Expr * EvalState::parseStdin()
 {
     //Activity act(*logger, lvlTalkative, format("parsing standard input"));
-    auto buffer = drainFD(0);
+    auto buffer = drainFD(STDIN_FILENO);
     // drainFD should have left some extra space for terminators
     buffer.append("\0\0", 2);
     auto s = make_ref<std::string>(std::move(buffer));

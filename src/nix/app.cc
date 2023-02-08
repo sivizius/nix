@@ -111,12 +111,12 @@ UnresolvedApp Installable::toApp(EvalState & state)
 
     else if (type == "derivation") {
         auto drvPath = cursor->forceDerivation();
-        auto outPath = cursor->getAttr(state.sOutPath)->getString();
-        auto outputName = cursor->getAttr(state.sOutputName)->getString();
-        auto name = cursor->getAttr(state.sName)->getString();
-        auto aPname = cursor->maybeGetAttr("pname");
-        auto aMeta = cursor->maybeGetAttr(state.sMeta);
-        auto aMainProgram = aMeta ? aMeta->maybeGetAttr("mainProgram") : nullptr;
+        auto outPath = cursor->getAttr(state.symbols.outPath)->getString();
+        auto outputName = cursor->getAttr(state.symbols.outputName)->getString();
+        auto name = cursor->getAttr(state.symbols.name)->getString();
+        auto aPname = cursor->maybeGetAttr(state.symbols.pname);
+        auto aMeta = cursor->maybeGetAttr(state.symbols.meta);
+        auto aMainProgram = aMeta ? aMeta->maybeGetAttr(state.symbols.mainProgram) : nullptr;
         auto mainProgram =
             aMainProgram
             ? aMainProgram->getString()

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <vector>
 
 #include "symbol-table.hh"
 #include "value/context.hh"
@@ -32,7 +33,8 @@ typedef enum {
     tPrimOp,
     tPrimOpApp,
     tExternal,
-    tFloat
+    tFloat,
+    tAttrPath
 } InternalType;
 
 // This type abstracts over all actual value types in the language,
@@ -49,7 +51,8 @@ typedef enum {
     nAttrs,
     nList,
     nFunction,
-    nExternal
+    nExternal,
+    nAttrPath
 } ValueType;
 
 class Bindings;
@@ -194,6 +197,7 @@ public:
         } primOpApp;
         ExternalValueBase * external;
         NixFloat fpoint;
+        std::vector<Symbol> * attrPath;
     };
 
     // Returns the normal type of a Value. This only returns nThunk if the
@@ -212,6 +216,7 @@ public:
             case tExternal: return nExternal;
             case tFloat: return nFloat;
             case tThunk: case tApp: case tBlackhole: return nThunk;
+            case tAttrPath: return nAttrPath;
         }
         abort();
     }
@@ -237,7 +242,7 @@ public:
         boolean = b;
     }
 
-    inline void mkString(const char * s, const char * * context = 0)
+    inline void mkString(const char * s, const char * * context = nullptr)
     {
         internalType = tString;
         string.s = s;
@@ -247,6 +252,8 @@ public:
     void mkString(std::string_view s);
 
     void mkString(std::string_view s, const PathSet & context);
+
+    void mkString(std::string_view left, std::string_view right, const PathSet & context);
 
     void mkStringMove(const char * s, const PathSet & context);
 
@@ -273,6 +280,13 @@ public:
     }
 
     Value & mkAttrs(BindingsBuilder & bindings);
+
+    inline void mkAttrPath(std::vector<Symbol> * p)
+    {
+        clearValue();
+        internalType = tAttrPath;
+        attrPath = p;
+    }
 
     inline void mkList(size_t size)
     {
@@ -361,6 +375,11 @@ public:
     size_t listSize() const
     {
         return internalType == tList1 ? 1 : internalType == tList2 ? 2 : bigList.size;
+    }
+
+    bool isEmptyList() const
+    {
+        return internalType == tListN && bigList.size == 0;
     }
 
     PosIdx determinePos(const PosIdx pos) const;

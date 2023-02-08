@@ -37,7 +37,7 @@ namespace nix {
     }
 
     TEST(logEI, jsonOutput) {
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create("random.nix");
         testing::internal::CaptureStderr();
 
@@ -170,7 +170,7 @@ namespace nix {
     }
 
     TEST(logError, logErrorWithPreviousAndNextLinesOfCode) {
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create(test_file);
 
         testing::internal::CaptureStderr();
@@ -188,7 +188,7 @@ namespace nix {
     }
 
     TEST(logError, logErrorWithInvalidFile) {
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create("invalid filename");
         testing::internal::CaptureStderr();
 
@@ -235,7 +235,7 @@ namespace nix {
 
     TEST(logWarning, logWarningWithFileLineNumAndCode) {
 
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create(test_file);
 
         testing::internal::CaptureStderr();
@@ -258,7 +258,7 @@ namespace nix {
      * --------------------------------------------------------------------------*/
 
     TEST(addTrace, showTracesWithShowTrace) {
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create(test_file);
         auto oneliner_file = testTable.create(one_liner);
         auto invalidfilename = testTable.create("invalid filename");
@@ -284,7 +284,7 @@ namespace nix {
     }
 
     TEST(addTrace, hideTracesWithoutShowTrace) {
-        SymbolTable testTable;
+        MinimalSymbolTable testTable;
         auto problem_file = testTable.create(test_file);
         auto oneliner_file = testTable.create(one_liner);
         auto invalidfilename = testTable.create("invalid filename");

@@ -61,22 +61,22 @@ bool createUserEnv(EvalState & state, DrvInfos & elems,
 
         auto attrs = state.buildBindings(7 + outputs.size());
 
-        attrs.alloc(state.sType).mkString("derivation");
-        attrs.alloc(state.sName).mkString(i.queryName());
+        attrs.alloc(state.symbols.type).mkString("derivation");
+        attrs.alloc(state.symbols.name).mkString(i.queryName());
         auto system = i.querySystem();
         if (!system.empty())
-            attrs.alloc(state.sSystem).mkString(system);
-        attrs.alloc(state.sOutPath).mkString(state.store->printStorePath(i.queryOutPath()));
+            attrs.alloc(state.symbols.system).mkString(system);
+        attrs.alloc(state.symbols.outPath).mkString(state.store->printStorePath(i.queryOutPath()));
         if (drvPath)
-            attrs.alloc(state.sDrvPath).mkString(state.store->printStorePath(*drvPath));
+            attrs.alloc(state.symbols.drvPath).mkString(state.store->printStorePath(*drvPath));
 
         // Copy each output meant for installation.
-        auto & vOutputs = attrs.alloc(state.sOutputs);
+        auto & vOutputs = attrs.alloc(state.symbols.outputs);
         state.mkList(vOutputs, outputs.size());
         for (const auto & [m, j] : enumerate(outputs)) {
             (vOutputs.listElems()[m] = state.allocValue())->mkString(j.first);
             auto outputAttrs = state.buildBindings(2);
-            outputAttrs.alloc(state.sOutPath).mkString(state.store->printStorePath(*j.second));
+            outputAttrs.alloc(state.symbols.outPath).mkString(state.store->printStorePath(*j.second));
             attrs.alloc(j.first).mkAttrs(outputAttrs);
 
             /* This is only necessary when installing store paths, e.g.,
@@ -95,7 +95,7 @@ bool createUserEnv(EvalState & state, DrvInfos & elems,
             meta.insert(state.symbols.create(j), v);
         }
 
-        attrs.alloc(state.sMeta).mkAttrs(meta);
+        attrs.alloc(state.symbols.meta).mkAttrs(meta);
 
         (manifest.listElems()[n++] = state.allocValue())->mkAttrs(attrs);
 
@@ -122,7 +122,7 @@ bool createUserEnv(EvalState & state, DrvInfos & elems,
     attrs.alloc("manifest").mkString(
         state.store->printStorePath(manifestFile),
         {state.store->printStorePath(manifestFile)});
-    attrs.insert(state.symbols.create("derivations"), &manifest);
+    attrs.insert(state.symbols.derivations, &manifest);
     Value args;
     args.mkAttrs(attrs);
 
@@ -133,9 +133,9 @@ bool createUserEnv(EvalState & state, DrvInfos & elems,
     debug("evaluating user environment builder");
     state.forceValue(topLevel, [&]() { return topLevel.determinePos(noPos); });
     PathSet context;
-    Attr & aDrvPath(*topLevel.attrs->find(state.sDrvPath));
+    Attr & aDrvPath(*topLevel.attrs->find(state.symbols.drvPath));
     auto topLevelDrv = state.coerceToStorePath(aDrvPath.pos, *aDrvPath.value, context, "");
-    Attr & aOutPath(*topLevel.attrs->find(state.sOutPath));
+    Attr & aOutPath(*topLevel.attrs->find(state.symbols.outPath));
     auto topLevelOut = state.coerceToStorePath(aOutPath.pos, *aOutPath.value, context, "");
 
     /* Realise the resulting store expression. */
